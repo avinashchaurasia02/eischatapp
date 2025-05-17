@@ -28,6 +28,7 @@ const Chatbot = ({ setChatbotMinimized }) => {
   const [isTyping, setIsTyping] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [formDisabled, setFormDisabled] = useState(false);
   const [formData, setFormData] = useState({
     subject: "",
     source: "",
@@ -112,6 +113,24 @@ const Chatbot = ({ setChatbotMinimized }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Check if the special options are present in the latest bot message
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastBotMessage = [...messages].reverse().find(msg => msg.sender === "bot");
+      if (lastBotMessage && lastBotMessage.options && lastBotMessage.options.length > 0) {
+        const specialOptions = ["Team Info", "Transaction Info", "Cache value", "Enter far id", "Other"];
+        const hasSpecialOptions = lastBotMessage.options.some(opt => 
+          specialOptions.includes(opt.replace(/^\d+\.|[a-zA-Z]\.\s*/, "").trim()));
+        
+        // Enable form ONLY if special options are present
+        setFormDisabled(!hasSpecialOptions);
+      } else {
+        // Disable form if no options at all
+        setFormDisabled(true);
+      }
+    }
+  }, [messages]);
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (newMessage.trim() === "") return;
@@ -166,24 +185,32 @@ const Chatbot = ({ setChatbotMinimized }) => {
     setIsTyping(false);
   };
 
+  // Modified function to handle specific option buttons properly
   const handleOptionClick = async (optionText) => {
+    // Special case for the multi-field form
     if (optionText.toLowerCase().includes("have multiple fields")) {
       setShowForm(true);
       return;
     }
 
-    const cleanedOpt = optionText.replace(/^\d+\.|[a-zA-Z]\.\s*/, "");
-
+    // Clean the option text (remove numbering/prefixes)
+    const cleanedOpt = optionText.replace(/^\d+\.|[a-zA-Z]\.\s*/, "").trim();
+    
+    // Check for specific options that should trigger API calls
+    const specialOptions = ["Team Info", "Transaction Info", "Cache value", "Enter far id", "Other"];
+    
+    // Add user message to chat
     const userMessage = {
       id: Date.now(),
       text: cleanedOpt,
       sender: "user",
       time: getCurrentTime(),
     };
-
     setMessages((prev) => [...prev, userMessage]);
+    
+    // Process the selected option
     setIsTyping(true);
-
+    
     try {
       setApiTimeout(() => {
         const errorMsg = {
@@ -195,6 +222,7 @@ const Chatbot = ({ setChatbotMinimized }) => {
         setMessages((prev) => [...prev, errorMsg]);
       });
 
+      // Send the option selection to the API
       const res = await postMessage(cleanedOpt);
       clearCurrentTimeout();
 
@@ -361,9 +389,16 @@ const Chatbot = ({ setChatbotMinimized }) => {
           )}
 
           <form className="message-form" onSubmit={handleSendMessage}>
-            <input type="text" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} placeholder="Type a message..." className="message-input" />
-            <button type="submit" className="send-button">
-              <img className="logo" src={send} alt="Send" style={{ height: "20px" }} />
+            <input 
+              type="text" 
+              value={newMessage} 
+              onChange={(e) => setNewMessage(e.target.value)} 
+              placeholder={formDisabled ? "Please select an option first..." : "Type a message..."} 
+              className="message-input" 
+              disabled={formDisabled}
+            />
+            <button type="submit" className="send-button" disabled={formDisabled}>
+              <img className="logo" src={send} alt="Send" style={{ height: "20px", opacity: formDisabled ? 0.5 : 1 }} />
             </button>
           </form>
         </>
