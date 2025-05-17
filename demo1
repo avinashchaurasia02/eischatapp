@@ -28,7 +28,8 @@ const Chatbot = ({ setChatbotMinimized }) => {
   const [isTyping, setIsTyping] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [formDisabled, setFormDisabled] = useState(false);
+  const [formDisabled, setFormDisabled] = useState(true); // Initially disabled
+  const [specialOptionSelected, setSpecialOptionSelected] = useState(false); // Track if special option was selected
   const [formData, setFormData] = useState({
     subject: "",
     source: "",
@@ -89,6 +90,11 @@ const Chatbot = ({ setChatbotMinimized }) => {
       }));
 
       setMessages(formattedMessages);
+      
+      // Initially disable the form until user selects a special option
+      setFormDisabled(true);
+      setSpecialOptionSelected(false);
+      
       setIsTyping(false);
     } catch {
       clearCurrentTimeout();
@@ -113,23 +119,8 @@ const Chatbot = ({ setChatbotMinimized }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Check if the special options are present in the latest bot message
-  useEffect(() => {
-    if (messages.length > 0) {
-      const lastBotMessage = [...messages].reverse().find(msg => msg.sender === "bot");
-      if (lastBotMessage && lastBotMessage.options && lastBotMessage.options.length > 0) {
-        const specialOptions = ["Team Info", "Transaction Info", "Cache value", "Enter far id", "Other"];
-        const hasSpecialOptions = lastBotMessage.options.some(opt => 
-          specialOptions.includes(opt.replace(/^\d+\.|[a-zA-Z]\.\s*/, "").trim()));
-        
-        // Enable form ONLY if special options are present
-        setFormDisabled(!hasSpecialOptions);
-      } else {
-        // Disable form if no options at all
-        setFormDisabled(true);
-      }
-    }
-  }, [messages]);
+  // We don't need this effect anymore as we'll control form enabled/disabled state
+  // directly in the handleOptionClick function and handleSendMessage
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -145,6 +136,10 @@ const Chatbot = ({ setChatbotMinimized }) => {
     setMessages((prev) => [...prev, userMsg]);
     setNewMessage("");
     setIsTyping(true);
+    
+    // Disable form immediately after sending a message
+    setFormDisabled(true);
+    setSpecialOptionSelected(false);
 
     try {
       setApiTimeout(() => {
@@ -196,8 +191,9 @@ const Chatbot = ({ setChatbotMinimized }) => {
     // Clean the option text (remove numbering/prefixes)
     const cleanedOpt = optionText.replace(/^\d+\.|[a-zA-Z]\.\s*/, "").trim();
     
-    // Check for specific options that should trigger API calls
+    // Define the special options that should enable the input form
     const specialOptions = ["Team Info", "Transaction Info", "Cache value", "Enter far id", "Other"];
+    const isSpecialOption = specialOptions.includes(cleanedOpt);
     
     // Add user message to chat
     const userMessage = {
@@ -207,6 +203,11 @@ const Chatbot = ({ setChatbotMinimized }) => {
       time: getCurrentTime(),
     };
     setMessages((prev) => [...prev, userMessage]);
+    
+    // Enable form ONLY if the user selected one of the special options
+    if (isSpecialOption) {
+      setSpecialOptionSelected(true);
+    }
     
     // Process the selected option
     setIsTyping(true);
@@ -236,6 +237,9 @@ const Chatbot = ({ setChatbotMinimized }) => {
           options: latest.options || [],
         };
         setMessages((prev) => [...prev, botResponse]);
+        
+        // After receiving response, enable form ONLY if we previously selected a special option
+        setFormDisabled(!isSpecialOption);
       }
     } catch {
       clearCurrentTimeout();
@@ -393,7 +397,7 @@ const Chatbot = ({ setChatbotMinimized }) => {
               type="text" 
               value={newMessage} 
               onChange={(e) => setNewMessage(e.target.value)} 
-              placeholder={formDisabled ? "Please select an option first..." : "Type a message..."} 
+              placeholder={formDisabled ? "Select one of the special options first..." : "Type a message..."} 
               className="message-input" 
               disabled={formDisabled}
             />
