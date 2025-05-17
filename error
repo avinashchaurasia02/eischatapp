@@ -1,0 +1,5 @@
+{Array(10).fill(getMarqueeText()).map((text, index) => (
+    <span key={index} style={{ marginRight: '50px' }}>
+      {text}
+    </span>
+  ))}
