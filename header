@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import ProfileIcon from './ProfileIcon';
 import logo from '../assets/tcs.png';
@@ -47,19 +46,46 @@ export default function Header({ username, onLogout, showProfileIcon = true }) {
       style={{
         paddingTop: '19px',
         paddingBottom: '19px',
-        display: 'flex',
-        flexDirection: 'column',
+        position: 'relative',
         background: 'linear-gradient(135deg, #667eea, #764ba2)',
-        color: '#ffffff'
+        color: '#ffffff',
+        overflow: 'hidden'
       }}
     >
-      {/* Header top section with logo, title and profile */}
+      {/* Marquee running in the background */}
+      <div style={{ 
+        position: 'absolute',
+        width: '100%',
+        top: 0,
+        left: 0,
+        right: 0,
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        zIndex: 1
+      }}>
+        <marquee 
+          behavior="scroll" 
+          direction="left"
+          scrollamount="12"
+          style={{ 
+            backgroundColor: 'transparent', 
+            fontWeight: 'bold',
+            opacity: 0.4
+          }}
+        >
+          {getMarqueeText()}
+        </marquee>
+      </div>
+      
+      {/* Header content with logo, title and profile */}
       <div style={{ 
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'space-between',
         width: '100%',
-        marginBottom: '10px'
+        position: 'relative',
+        zIndex: 2
       }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <img
@@ -106,21 +132,6 @@ export default function Header({ username, onLogout, showProfileIcon = true }) {
             </>
           )}
         </div>
-      </div>
-      
-      {/* Marquee section */}
-      <div style={{ width: '100%' }}>
-        <marquee 
-          behavior="scroll" 
-          direction="left"
-          style={{ 
-            backgroundColor: 'rgba(0,0,0,0.2)', 
-            padding: '5px',
-            fontWeight: 'bold'
-          }}
-        >
-          {getMarqueeText()}
-        </marquee>
       </div>
     </div>
   );
