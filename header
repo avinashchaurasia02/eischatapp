@@ -74,7 +74,7 @@ export default function Header({ username, onLogout, showProfileIcon = true }) {
             opacity: 0.4
           }}
         >
-          {getMarqueeText()}
+          {Array(10).fill(getMarqueeText()).join(' • ')}
         </marquee>
       </div>
       
