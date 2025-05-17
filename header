@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import ProfileIcon from './ProfileIcon';
 import logo from '../assets/tcs.png';
@@ -13,7 +14,7 @@ export default function Header({ username, onLogout, showProfileIcon = true }) {
       try {
         const response = await fetch('https://10.191.171.12:5443/PyPortal/env');
         const data = await response.json();
-         console.log(data);
+        console.log(data);
         setEnv(data.Environment); // Assuming API returns { Environment: "PR" } or "DR"
       } catch (error) {
         console.error('Failed to fetch environment:', error);
@@ -33,10 +34,11 @@ export default function Header({ username, onLogout, showProfileIcon = true }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const getHeaderTitle = () => {
-    if (env === 'PR') return 'EIS INFRA PR Home ';
-    if (env === 'DR') return 'EIS INFRA DR Home ';
-    return 'EIS INFRA '; // Default/fallback
+  // Determine marquee text based on environment
+  const getMarqueeText = () => {
+    if (env === 'PR') return 'PR is live now!!';
+    if (env === 'DR') return 'DR is live now!!';
+    return 'Welcome to EIS INFRA'; // Default/fallback text
   };
 
   return (
@@ -46,57 +48,79 @@ export default function Header({ username, onLogout, showProfileIcon = true }) {
         paddingTop: '19px',
         paddingBottom: '19px',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+        flexDirection: 'column',
         background: 'linear-gradient(135deg, #667eea, #764ba2)',
         color: '#ffffff'
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center' }}>
-        <img
-          className="logo"
-          src={logo}
-          alt="Company Logo"
-          style={{ height: '40px', marginRight: '20px' }}
-        />
-      </div>
-
-      <h1 style={{ margin: 0, position: 'absolute', left: '50%', transform: 'translateX(-50%)' }}>
-        {getHeaderTitle()}
-      </h1>
-
-      <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }} ref={dropdownRef}>
-        {showProfileIcon && username && (
-          <>
-            <div
-              onClick={() => setMenuOpen(!menuOpen)}
-              style={{ cursor: 'pointer', marginLeft: '10px' }}
-            >
-              <ProfileIcon sender={username} />
-            </div>
-
-            {menuOpen && (
+      {/* Header top section with logo, title and profile */}
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        width: '100%',
+        marginBottom: '10px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <img
+            className="logo"
+            src={logo}
+            alt="Company Logo"
+            style={{ height: '40px', marginRight: '20px' }}
+          />
+        </div>
+        
+        <h1 style={{ margin: 0 }}>
+          EIS INFRA HOME
+        </h1>
+        
+        <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }} ref={dropdownRef}>
+          {showProfileIcon && username && (
+            <>
               <div
-                style={{
-                  position: 'absolute',
-                  top: '50px',
-                  right: 0,
-                  background: '#1e1e1e',
-                  color: '#fff',
-                  boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
-                  borderRadius: '6px',
-                  padding: '10px',
-                  zIndex: 100,
-                  minWidth: '120px'
-                }}
+                onClick={() => setMenuOpen(!menuOpen)}
+                style={{ cursor: 'pointer', marginLeft: '10px' }}
               >
-                <div style={{ padding: '8px 12px', cursor: 'pointer' }} onClick={onLogout}>
-                  Logout
-                </div>
+                <ProfileIcon sender={username} />
               </div>
-            )}
-          </>
-        )}
+              {menuOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '50px',
+                    right: 0,
+                    background: '#1e1e1e',
+                    color: '#fff',
+                    boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+                    borderRadius: '6px',
+                    padding: '10px',
+                    zIndex: 100,
+                    minWidth: '120px'
+                  }}
+                >
+                  <div style={{ padding: '8px 12px', cursor: 'pointer' }} onClick={onLogout}>
+                    Logout
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+      
+      {/* Marquee section */}
+      <div style={{ width: '100%' }}>
+        <marquee 
+          behavior="scroll" 
+          direction="left"
+          style={{ 
+            backgroundColor: 'rgba(0,0,0,0.2)', 
+            padding: '5px',
+            fontWeight: 'bold'
+          }}
+        >
+          {getMarqueeText()}
+        </marquee>
       </div>
     </div>
   );
