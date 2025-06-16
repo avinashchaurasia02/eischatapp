@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Menu as MenuIcon, ChevronLeft, ChevronRight, Star } from 'lucide-react';
 import { cardLinks } from './CardLinks';
+import { getCardLinks } from '../App'; // Import from your App.js
 import '../styles/Menu.css';
 
 const Sidebar = ({ darkMode, isSidebarOpen, setIsSidebarOpen }) => {
@@ -8,6 +9,8 @@ const Sidebar = ({ darkMode, isSidebarOpen, setIsSidebarOpen }) => {
   const [favorites, setFavorites] = useState([]);
   const [userId, setUserId] = useState(null);
   const [password, setPassword] = useState(null);
+
+ const securedLinks = getCardLinks(isLoggedIn, navigateToLogin);
 
   const toggleSidebar = () => setIsSidebarOpen(prev => !prev);
 
@@ -295,44 +298,45 @@ const Sidebar = ({ darkMode, isSidebarOpen, setIsSidebarOpen }) => {
           </div>
         )}
 
-        <div className="sidebar-content">
-          <div className="sidebar-section">
-            {filteredLinks.map((link, index) => {
-              const isFavorited = favorites.includes(link.name);
-              return (
-                <div key={index} className="link-card">
-                  <span
-                    className="star-icon"
-                    onClick={() => toggleFavorite(link.name)}
-                    title={isFavorited ? 'Unstar' : 'Star'}
-                  >
-                    {isFavorited ? (
-                      <Star fill="#facc15" color="#facc15" size={16} />
-                    ) : (
-                      <Star color="#fff" size={16} />
-                    )}
-                  </span>
-                  <a
-                    href={link.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="link-anchor"
-                  >
-                    {isSidebarOpen ? (
-                      <span>{link.name}</span>
-                    ) : (
-                      <img
-                        src={link.icon}
-                        alt={link.name}
-                        title={link.name}
-                        className="link-icon"
-                      />
-                    )}
-                  </a>
-                </div>
-              );
-            })}
-          </div>
+        
+      <div className="sidebar-content">
+        <div className="sidebar-section">
+          {filteredLinks.map((link, index) => {
+            const isFavorited = favorites.includes(link.name);
+            return (
+              <div key={index} className="link-card">
+                <span
+                  className="star-icon"
+                  onClick={() => toggleFavorite(link.name)}
+                  title={isFavorited ? 'Unstar' : 'Star'}
+                >
+                  {isFavorited ? (
+                    <Star fill="#facc15" color="#facc15" size={16} />
+                  ) : (
+                    <Star color="#fff" size={16} />
+                  )}
+                </span>
+                <a
+                  href={link.url}
+                  onClick={link.onClick} // Add the auth check handler
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="link-anchor"
+                >
+                  {isSidebarOpen ? (
+                    <span>{link.name}</span>
+                  ) : (
+                    <img
+                      src={link.icon}
+                      alt={link.name}
+                      title={link.name}
+                      className="link-icon"
+                    />
+                  )}
+                </a>
+              </div>
+            );
+          })}
         </div>
       </div>
     </>
