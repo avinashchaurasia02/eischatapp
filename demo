@@ -1,20 +1,31 @@
-// components/CardGrid.jsx
+// components/SecureLinkCard.jsx
 import React from 'react';
-import { cardLinks } from '../cardLinks';
-import SecureLinkCard from './SecureLinkCard';
 
-const CardGrid = ({ isLoggedIn }) => (
-  <div className="card-grid">
-    {cardLinks.map((link, idx) => (
-      <SecureLinkCard
-        key={idx}
-        name={link.name}
-        url={link.url}
-        icon={link.icon}
-        isLoggedIn={isLoggedIn}
-      />
-    ))}
-  </div>
-);
+const SecureLinkCard = ({ name, url, icon, isLoggedIn }) => {
+  const handleClick = (e) => {
+    if (!isLoggedIn) {
+      e.preventDefault();
 
-export default CardGrid;
+      // Store the target URL so we can use it post-login
+      sessionStorage.setItem('targetURL', url);
+
+      // Redirect to login
+      window.location.href = "/login";
+    }
+  };
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={handleClick}
+      className="card-link"
+    >
+      <img src={icon} alt={`${name} icon`} />
+      <span>{name}</span>
+    </a>
+  );
+};
+
+export default SecureLinkCard;
