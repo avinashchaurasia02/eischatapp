@@ -1,163 +1,20 @@
-import React, { useEffect, useState } from 'react';
-import { Menu as MenuIcon, ChevronLeft, ChevronRight, Star } from 'lucide-react';
-import { cardLinks } from '../links';
-import '../styles/Menu.css';
+// components/CardGrid.jsx
+import React from 'react';
+import { cardLinks } from '../cardLinks';
+import SecureLinkCard from './SecureLinkCard';
 
-const Sidebar = ({ darkMode, isSidebarOpen, setIsSidebarOpen }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [favorites, setFavorites] = useState([]);
-  const [userId,setUserId] = useState(null);
-  const [password,setPassword] = useState(null);
-  const toggleSidebar = () => setIsSidebarOpen(prev => !prev);
+const CardGrid = ({ isLoggedIn }) => (
+  <div className="card-grid">
+    {cardLinks.map((link, idx) => (
+      <SecureLinkCard
+        key={idx}
+        name={link.name}
+        url={link.url}
+        icon={link.icon}
+        isLoggedIn={isLoggedIn}
+      />
+    ))}
+  </div>
+);
 
-  // Get userId from localStorage on mount
-  useEffect(() => {
-    const uid = localStorage.getItem('uidd'); // Ensure this key exists
-    const password = localStorage.getItem('password');
-    if (uid && password) {
-            setUserId(uid);
-            setPassword(password);
-    }
-    else console.warn('No username found in localStorage');
-  }, []);
-
- useEffect(() => {
-  if (!userId || !password) return;
-
-  const fetchFavorites = async () => {
-    try {
-      const res = await fetch('/PyPortal/EISHome/postFavourites/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId,
-          password
-        }),
-      });
-
-      const data = await res.json();
-      setFavorites(data.favourites);
-    } catch (err) {
-      console.error('Failed to load favorites:', err);
-    }
-  };
-
-  fetchFavorites();
-}, [userId, password]);
-
-
-  // Update backend when favorites change
-  const updateFavoritesOnBackend = async (updatedFavorites) => {
-    try {
-      console.log(updatedFavorites)
-      await fetch('/PyPortal/EISHome/postFavourites/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        payload : {'favList':updatedFavorites,'userId':userId,'password':password},
-        body: JSON.stringify({ userId: userId, favList: updatedFavorites,password:password}),
-      });
-    } catch (error) {
-      console.error('Failed to update favorites:', error);
-    }
-  };
-
-  // Toggle favorite
-  const toggleFavorite = (name) => {
-    setFavorites((prev) => {
-      console.log("this line was executed and will get the data")
-      console.log(prev)
-      const updated = prev.includes(name)
-        ? prev.filter((fav) => fav !== name)
-        : [...prev, name];
-      console.log(updated)
-      updateFavoritesOnBackend(updated);
-      return updated;
-    });
-  };
-
-  // Filter + Sort
-  const filteredLinks = cardLinks
-    .filter((link) => link.name.toLowerCase().includes(searchTerm.toLowerCase()))
-    .sort((a, b) => {
-      const aFav = favorites.includes(a.name);
-      const bFav = favorites.includes(b.name);
-      return aFav === bFav ? 0 : aFav ? -1 : 1;
-    });
-
-  return (
-    <>
-      {!isSidebarOpen && (
-        <button className="sidebar-toggle" onClick={toggleSidebar}>
-          <MenuIcon size={24} />
-        </button>
-      )}
-
-      <div className={`sidebar ${isSidebarOpen ? 'open' : 'collapsed'}`}>
-        <div className="sidebar-header">
-          {isSidebarOpen && <h2 className="sidebar-title">Quick Access</h2>}
-          <button
-            className="collapse-btn"
-            onClick={toggleSidebar}
-            aria-label={isSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-          >
-            {isSidebarOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
-          </button>
-        </div>
-
-        {isSidebarOpen && (
-          <div className="sidebar-search">
-            <input
-              type="text"
-              placeholder="Search links..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="search-input"
-            />
-          </div>
-        )}
-
-        <div className="sidebar-content">
-          <div className="sidebar-section">
-            {filteredLinks.map((link, index) => {
-              const isFavorited = favorites.includes(link.name);
-              return (
-                <div key={index} className="link-card">
-                  <span
-                    className="star-icon"
-                    onClick={() => toggleFavorite(link.name)}
-                    title={isFavorited ? 'Unstar' : 'Star'}
-                  >
-                    {isFavorited ? (
-                      <Star fill="#facc15" color="#facc15" size={16} />
-                    ) : (
-                      <Star color="#fff" size={16} />
-                    )}
-                  </span>
-                  <a
-                    href={link.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="link-anchor"
-                  >
-                    {isSidebarOpen ? (
-                      <span>{link.name}</span>
-                    ) : (
-                      <img
-                        src={link.icon}
-                        alt={link.name}
-                        title={link.name}
-                        className="link-icon"
-                      />
-                    )}
-                  </a>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </>
-  );
-};
-
-export default Sidebar;
+export default CardGrid;
