@@ -1,0 +1,569 @@
+#!/usr/bin/env python3
+import mysql.connector
+import re
+import sys
+import json
+from typing import Dict, List, Any, Optional, Tuple
+from datetime import datetime, timedelta
+
+class OfflineMySQLChatbot:
+    def __init__(self, mysql_config: Dict[str, str]):
+        """
+        Initialize the offline chatbot with MySQL connection
+        """
+        self.mysql_config = mysql_config
+        self.connection = None
+        self.table_schemas = {}
+        self.conversation_history = []
+        
+        # Colors for terminal output
+        self.COLORS = {
+            'RED': '\033[91m',
+            'GREEN': '\033[92m',
+            'YELLOW': '\033[93m',
+            'BLUE': '\033[94m',
+            'PURPLE': '\033[95m',
+            'CYAN': '\033[96m',
+            'WHITE': '\033[97m',
+            'BOLD': '\033[1m',
+            'END': '\033[0m'
+        }
+        
+        # Query patterns for natural language processing
+        self.query_patterns = self.initialize_query_patterns()
+        
+        # Initialize connection and schema
+        self.setup()
+    
+    def print_colored(self, text: str, color: str = 'WHITE', bold: bool = False):
+        """Print colored text to terminal"""
+        color_code = self.COLORS.get(color, self.COLORS['WHITE'])
+        if bold:
+            color_code = self.COLORS['BOLD'] + color_code
+        print(f"{color_code}{text}{self.COLORS['END']}")
+    
+    def setup(self):
+        """Setup database connection and load schemas"""
+        self.print_colored("🤖 Initializing Offline MySQL Chatbot...", 'CYAN', bold=True)
+        
+        try:
+            # Connect to MySQL
+            self.print_colored("🔌 Connecting to MySQL database...", 'YELLOW')
+            self.connection = mysql.connector.connect(**self.mysql_config)
+            self.print_colored("✅ MySQL connection successful", 'GREEN')
+            
+            # Load table schemas
+            self.print_colored("📋 Loading database schema...", 'YELLOW')
+            self.load_table_schemas()
+            self.print_colored(f"✅ Loaded {len(self.table_schemas)} tables", 'GREEN')
+            
+        except mysql.connector.Error as e:
+            self.print_colored(f"❌ MySQL connection error: {e}", 'RED')
+            sys.exit(1)
+    
+    def load_table_schemas(self):
+        """Load database schema information"""
+        cursor = self.connection.cursor()
+        
+        try:
+            # Get all tables
+            cursor.execute("SHOW TABLES")
+            tables = [table[0] for table in cursor.fetchall()]
+            
+            # Get detailed info for each table
+            for table in tables:
+                cursor.execute(f"DESCRIBE {table}")
+                columns = cursor.fetchall()
+                
+                # Get row count
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                row_count = cursor.fetchone()[0]
+                
+                self.table_schemas[table] = {
+                    'columns': [col[0] for col in columns],
+                    'column_details': columns,  # (name, type, null, key, default, extra)
+                    'row_count': row_count,
+                    'primary_keys': [col[0] for col in columns if col[3] == 'PRI'],
+                    'column_types': {col[0]: col[1] for col in columns}
+                }
+                
+        finally:
+            cursor.close()
+    
+    def initialize_query_patterns(self) -> List[Dict]:
+        """Initialize patterns for natural language to SQL conversion"""
+        return [
+            # SELECT patterns
+            {
+                'pattern': r'\b(?:show|list|get|find|select|display)\s+(?:all\s+)?(?:the\s+)?(\w+)',
+                'type': 'SELECT_ALL',
+                'template': 'SELECT * FROM {table} LIMIT 50'
+            },
+            {
+                'pattern': r'\b(?:count|how many)\s+(?:total\s+)?(?:number of\s+)?(\w+)',
+                'type': 'COUNT',
+                'template': 'SELECT COUNT(*) as total FROM {table}'
+            },
+            {
+                'pattern': r'\b(?:show|get)\s+(\w+)\s+(?:where|with|having)\s+(\w+)\s*(?:=|is|equals?)\s*[\'"]?([^\'"\s]+)[\'"]?',
+                'type': 'SELECT_WHERE',
+                'template': 'SELECT * FROM {table} WHERE {column} = "{value}" LIMIT 20'
+            },
+            {
+                'pattern': r'\b(?:show|get)\s+(\w+)\s+(?:where|with)\s+(\w+)\s*(?:>|greater than)\s*([0-9\.]+)',
+                'type': 'SELECT_GREATER',
+                'template': 'SELECT * FROM {table} WHERE {column} > {value} LIMIT 20'
+            },
+            {
+                'pattern': r'\b(?:show|get)\s+(\w+)\s+(?:where|with)\s+(\w+)\s*(?:<|less than)\s*([0-9\.]+)',
+                'type': 'SELECT_LESS',
+                'template': 'SELECT * FROM {table} WHERE {column} < {value} LIMIT 20'
+            },
+            {
+                'pattern': r'\btop\s+([0-9]+)\s+(\w+)',
+                'type': 'SELECT_TOP',
+                'template': 'SELECT * FROM {table} ORDER BY {column} DESC LIMIT {limit}'
+            },
+            {
+                'pattern': r'\b(?:latest|recent|newest)\s+([0-9]+)?\s*(\w+)',
+                'type': 'SELECT_RECENT',
+                'template': 'SELECT * FROM {table} ORDER BY {date_column} DESC LIMIT {limit}'
+            },
+            {
+                'pattern': r'\b(?:oldest|first)\s+([0-9]+)?\s*(\w+)',
+                'type': 'SELECT_OLDEST',
+                'template': 'SELECT * FROM {table} ORDER BY {date_column} ASC LIMIT {limit}'
+            },
+            {
+                'pattern': r'\baverage|avg\s+(?:of\s+)?(\w+)\s+(?:in|from)\s+(\w+)',
+                'type': 'AVG',
+                'template': 'SELECT AVG({column}) as average_{column} FROM {table}'
+            },
+            {
+                'pattern': r'\bsum\s+(?:of\s+)?(\w+)\s+(?:in|from)\s+(\w+)',
+                'type': 'SUM',
+                'template': 'SELECT SUM({column}) as total_{column} FROM {table}'
+            },
+            {
+                'pattern': r'\bmax\s+(?:of\s+)?(\w+)\s+(?:in|from)\s+(\w+)',
+                'type': 'MAX',
+                'template': 'SELECT MAX({column}) as max_{column} FROM {table}'
+            },
+            {
+                'pattern': r'\bmin\s+(?:of\s+)?(\w+)\s+(?:in|from)\s+(\w+)',
+                'type': 'MIN',
+                'template': 'SELECT MIN({column}) as min_{column} FROM {table}'
+            }
+        ]
+    
+    def find_best_table_match(self, text: str) -> Optional[str]:
+        """Find the best matching table name from user input"""
+        text_lower = text.lower()
+        
+        # Direct match
+        for table in self.table_schemas.keys():
+            if table.lower() in text_lower:
+                return table
+        
+        # Partial match or plural/singular variations
+        for table in self.table_schemas.keys():
+            table_lower = table.lower()
+            
+            # Check if table name is a substring or vice versa
+            if table_lower in text_lower or any(word in table_lower for word in text_lower.split()):
+                return table
+            
+            # Check plural/singular variations
+            if table_lower.endswith('s') and table_lower[:-1] in text_lower:
+                return table
+            elif f"{table_lower}s" in text_lower:
+                return table
+        
+        return None
+    
+    def find_best_column_match(self, table: str, text: str) -> Optional[str]:
+        """Find the best matching column name from user input"""
+        if table not in self.table_schemas:
+            return None
+        
+        text_lower = text.lower()
+        columns = self.table_schemas[table]['columns']
+        
+        # Direct match
+        for column in columns:
+            if column.lower() in text_lower:
+                return column
+        
+        # Partial match
+        for column in columns:
+            column_lower = column.lower()
+            if any(word in column_lower for word in text_lower.split()):
+                return column
+        
+        return None
+    
+    def find_date_column(self, table: str) -> Optional[str]:
+        """Find a date/timestamp column in the table"""
+        if table not in self.table_schemas:
+            return None
+        
+        date_keywords = ['date', 'time', 'created', 'updated', 'modified', 'timestamp']
+        columns = self.table_schemas[table]['columns']
+        
+        for column in columns:
+            column_lower = column.lower()
+            if any(keyword in column_lower for keyword in date_keywords):
+                return column
+        
+        return columns[0] if columns else None  # Fallback to first column
+    
+    def generate_sql_query(self, user_input: str) -> Tuple[Optional[str], str]:
+        """Generate SQL query from natural language input"""
+        user_input_lower = user_input.lower().strip()
+        
+        # Try to match patterns
+        for pattern_info in self.query_patterns:
+            match = re.search(pattern_info['pattern'], user_input_lower)
+            if match:
+                groups = match.groups()
+                
+                # Find the best table match
+                table = self.find_best_table_match(user_input)
+                if not table:
+                    continue
+                
+                query_type = pattern_info['type']
+                template = pattern_info['template']
+                explanation = f"I found a {query_type.replace('_', ' ').lower()} query pattern."
+                
+                try:
+                    if query_type == 'SELECT_ALL':
+                        query = template.format(table=table)
+                    
+                    elif query_type == 'COUNT':
+                        query = template.format(table=table)
+                    
+                    elif query_type == 'SELECT_WHERE':
+                        table_name, column, value = groups[0], groups[1], groups[2]
+                        actual_table = self.find_best_table_match(table_name) or table
+                        actual_column = self.find_best_column_match(actual_table, column)
+                        if actual_column:
+                            query = template.format(table=actual_table, column=actual_column, value=value)
+                        else:
+                            continue
+                    
+                    elif query_type in ['SELECT_GREATER', 'SELECT_LESS']:
+                        table_name, column, value = groups[0], groups[1], groups[2]
+                        actual_table = self.find_best_table_match(table_name) or table
+                        actual_column = self.find_best_column_match(actual_table, column)
+                        if actual_column:
+                            query = template.format(table=actual_table, column=actual_column, value=value)
+                        else:
+                            continue
+                    
+                    elif query_type == 'SELECT_TOP':
+                        limit, table_name = groups[0], groups[1]
+                        actual_table = self.find_best_table_match(table_name) or table
+                        # Use primary key or first column for ordering
+                        pk = self.table_schemas[actual_table]['primary_keys']
+                        order_column = pk[0] if pk else self.table_schemas[actual_table]['columns'][0]
+                        query = template.format(table=actual_table, column=order_column, limit=limit)
+                    
+                    elif query_type in ['SELECT_RECENT', 'SELECT_OLDEST']:
+                        limit, table_name = groups[0] or '10', groups[1]
+                        actual_table = self.find_best_table_match(table_name) or table
+                        date_column = self.find_date_column(actual_table)
+                        if date_column:
+                            query = template.format(table=actual_table, date_column=date_column, limit=limit)
+                        else:
+                            continue
+                    
+                    elif query_type in ['AVG', 'SUM', 'MAX', 'MIN']:
+                        column, table_name = groups[0], groups[1]
+                        actual_table = self.find_best_table_match(table_name) or table
+                        actual_column = self.find_best_column_match(actual_table, column)
+                        if actual_column:
+                            query = template.format(table=actual_table, column=actual_column)
+                        else:
+                            continue
+                    
+                    else:
+                        continue
+                    
+                    return query, explanation
+                
+                except (KeyError, IndexError):
+                    continue
+        
+        return None, "I couldn't understand your query. Try asking in a different way."
+    
+    def execute_query(self, query: str) -> Dict[str, Any]:
+        """Execute SQL query and return results"""
+        cursor = self.connection.cursor(dictionary=True)
+        try:
+            cursor.execute(query)
+            
+            if query.strip().upper().startswith('SELECT'):
+                results = cursor.fetchall()
+                return {
+                    'success': True,
+                    'data': results,
+                    'row_count': len(results),
+                    'query': query
+                }
+            else:
+                self.connection.commit()
+                return {
+                    'success': True,
+                    'affected_rows': cursor.rowcount,
+                    'query': query
+                }
+                
+        except mysql.connector.Error as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'query': query
+            }
+        finally:
+            cursor.close()
+    
+    def display_results(self, result: Dict[str, Any]):
+        """Display query results in a formatted way"""
+        if not result['success']:
+            self.print_colored(f"❌ Query Error: {result['error']}", 'RED')
+            self.print_colored(f"Query: {result['query']}", 'YELLOW')
+            return
+        
+        # Show the executed query
+        self.print_colored(f"📝 Executed Query:", 'CYAN')
+        self.print_colored(f"   {result['query']}", 'WHITE')
+        print()
+        
+        if 'data' in result:
+            # SELECT query results
+            data = result['data']
+            if not data:
+                self.print_colored("📋 No results found.", 'YELLOW')
+                return
+            
+            self.print_colored(f"📊 Results ({result['row_count']} rows):", 'GREEN', bold=True)
+            print("=" * 60)
+            
+            # Display results in a table format
+            if data:
+                # Get column widths
+                headers = list(data[0].keys())
+                col_widths = {}
+                
+                for header in headers:
+                    col_widths[header] = max(
+                        len(str(header)),
+                        max(len(str(row.get(header, ''))) for row in data[:10])  # Check first 10 rows
+                    )
+                    col_widths[header] = min(col_widths[header], 30)  # Max width of 30
+                
+                # Print headers
+                header_row = " | ".join(header.ljust(col_widths[header]) for header in headers)
+                self.print_colored(header_row, 'CYAN', bold=True)
+                self.print_colored("-" * len(header_row), 'CYAN')
+                
+                # Print data rows (limit to first 20 for readability)
+                display_count = min(20, len(data))
+                for i, row in enumerate(data[:display_count]):
+                    row_str = " | ".join(
+                        str(row.get(header, '')).ljust(col_widths[header])[:col_widths[header]]
+                        for header in headers
+                    )
+                    print(row_str)
+                
+                if len(data) > display_count:
+                    self.print_colored(f"\n... and {len(data) - display_count} more rows", 'YELLOW')
+        
+        else:
+            # Non-SELECT query results
+            self.print_colored(f"✅ Query executed successfully. Affected rows: {result['affected_rows']}", 'GREEN')
+    
+    def show_help(self):
+        """Display help information"""
+        help_text = f"""
+🤖 Offline MySQL AI Chatbot - Commands & Examples:
+
+{self.COLORS['CYAN']}Basic Queries:{self.COLORS['END']}
+  • "Show all users"
+  • "List products"
+  • "Display customers"
+
+{self.COLORS['CYAN']}Counting:{self.COLORS['END']}
+  • "Count users"
+  • "How many orders?"
+  • "Total number of products"
+
+{self.COLORS['CYAN']}Filtering:{self.COLORS['END']}
+  • "Show users where age > 25"
+  • "Get products where price < 100"
+  • "Find orders with status = 'completed'"
+
+{self.COLORS['CYAN']}Sorting & Limiting:{self.COLORS['END']}
+  • "Top 10 customers"
+  • "Latest 5 orders"
+  • "Oldest products"
+
+{self.COLORS['CYAN']}Aggregations:{self.COLORS['END']}
+  • "Average price of products"
+  • "Sum of order amounts"
+  • "Max age in users"
+  • "Min salary from employees"
+
+{self.COLORS['CYAN']}System Commands:{self.COLORS['END']}
+  • tables          - List all tables
+  • describe [table] - Show table structure
+  • help            - Show this help
+  • clear           - Clear screen
+  • quit/exit       - Exit the chatbot
+
+{self.COLORS['YELLOW']}Available Tables:{self.COLORS['END']}
+"""
+        for table, info in self.table_schemas.items():
+            help_text += f"  • {table} ({info['row_count']} rows)\n"
+        
+        self.print_colored(help_text, 'WHITE')
+    
+    def show_tables(self):
+        """Display available tables"""
+        self.print_colored("\n📋 Available Tables:", 'CYAN', bold=True)
+        for table, info in self.table_schemas.items():
+            columns = ", ".join(info['columns'][:5])  # Show first 5 columns
+            if len(info['columns']) > 5:
+                columns += f", ... (+{len(info['columns']) - 5} more)"
+            self.print_colored(f"  • {table} ({info['row_count']} rows): {columns}", 'WHITE')
+    
+    def describe_table(self, table_name: str):
+        """Show detailed table structure"""
+        if table_name not in self.table_schemas:
+            self.print_colored(f"❌ Table '{table_name}' not found", 'RED')
+            return
+        
+        info = self.table_schemas[table_name]
+        self.print_colored(f"\n📋 Table Structure: {table_name} ({info['row_count']} rows)", 'CYAN', bold=True)
+        print("=" * 60)
+        
+        for col_info in info['column_details']:
+            name, col_type, null, key, default, extra = col_info
+            line = f"  {name}: {col_type}"
+            
+            details = []
+            if key == 'PRI':
+                details.append("PRIMARY KEY")
+            elif key == 'MUL':
+                details.append("INDEX")
+            if null == 'NO':
+                details.append("NOT NULL")
+            if default is not None:
+                details.append(f"DEFAULT {default}")
+            if extra:
+                details.append(extra)
+            
+            if details:
+                line += f" ({', '.join(details)})"
+            
+            print(line)
+    
+    def chat_loop(self):
+        """Main chat loop"""
+        self.print_colored("\n🚀 Offline MySQL AI Chatbot Ready!", 'GREEN', bold=True)
+        self.print_colored("Ask questions about your database in natural language!", 'CYAN')
+        self.print_colored("Type 'help' for examples and commands\n", 'YELLOW')
+        
+        while True:
+            try:
+                # Get user input
+                user_input = input(f"{self.COLORS['BOLD']}You: {self.COLORS['END']}").strip()
+                
+                if not user_input:
+                    continue
+                
+                # Handle system commands
+                if user_input.lower() in ['quit', 'exit']:
+                    self.print_colored("👋 Goodbye!", 'GREEN')
+                    break
+                elif user_input.lower() == 'help':
+                    self.show_help()
+                    continue
+                elif user_input.lower() == 'tables':
+                    self.show_tables()
+                    continue
+                elif user_input.lower() == 'clear':
+                    import os
+                    os.system('clear' if os.name == 'posix' else 'cls')
+                    continue
+                elif user_input.lower().startswith('describe '):
+                    table_name = user_input[9:].strip()
+                    self.describe_table(table_name)
+                    continue
+                
+                # Process natural language query
+                print(f"{self.COLORS['PURPLE']}🤖 Bot: {self.COLORS['END']}", end="", flush=True)
+                
+                # Generate SQL query
+                sql_query, explanation = self.generate_sql_query(user_input)
+                
+                if sql_query:
+                    print(f"{explanation}\n")
+                    result = self.execute_query(sql_query)
+                    self.display_results(result)
+                else:
+                    print(explanation)
+                    self.print_colored("\n💡 Try commands like:", 'YELLOW')
+                    self.print_colored("   • 'show all [table_name]'", 'WHITE')
+                    self.print_colored("   • 'count [table_name]'", 'WHITE')
+                    self.print_colored("   • 'tables' to see available tables", 'WHITE')
+                
+                print()  # Add spacing
+                
+            except KeyboardInterrupt:
+                self.print_colored("\n👋 Goodbye!", 'GREEN')
+                break
+            except Exception as e:
+                self.print_colored(f"\n❌ Error: {e}", 'RED')
+    
+    def close(self):
+        """Clean up connections"""
+        if self.connection:
+            self.connection.close()
+
+def main():
+    """Main function to run the chatbot"""
+    print("🤖 Offline MySQL AI Chatbot")
+    print("=" * 35)
+    print("No internet required - uses rule-based natural language processing")
+    print()
+    
+    # Get MySQL configuration
+    print("Please provide your MySQL connection details:")
+    
+    mysql_config = {
+        'host': input("Host (localhost): ").strip() or 'localhost',
+        'user': input("Username: ").strip(),
+        'password': input("Password: ").strip(),
+        'database': input("Database name: ").strip()
+    }
+    
+    # Validate inputs
+    if not all([mysql_config['user'], mysql_config['database']]):
+        print("❌ Username and database name are required!")
+        return
+    
+    try:
+        # Initialize and run chatbot
+        chatbot = OfflineMySQLChatbot(mysql_config)
+        chatbot.chat_loop()
+        
+    except Exception as e:
+        print(f"❌ Fatal error: {e}")
+    finally:
+        if 'chatbot' in locals():
+            chatbot.close()
+
+if __name__ == "__main__":
+    main()
